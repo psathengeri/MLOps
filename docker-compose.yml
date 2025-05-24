@@ -1,34 +1,54 @@
 version: '3.8'
+
 services:
+  # Shared PostgreSQL Database
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: mlflow_multitenant
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+  # Multi-Tenant Gateway
+  gateway:
+    build: ./gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://mlflow:mlflow123@postgres:5432/mlflow_multitenant
+    depends_on:
+      - postgres
+    volumes:
+      - ./tenants_data:/app/tenants_data
+
+  # MLflow Server (Tenant-Aware)
   mlflow:
     build: ./mlflow
     ports:
-      - "5001:5001"
+      - "5001:5000"
     environment:
-      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow.db
-      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
-      - MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
+      - DATABASE_URL=postgresql://mlflow:mlflow123@postgres:5432/mlflow_multitenant
+    depends_on:
+      - postgres
     volumes:
-      - ./mlflow_data:/mlflow:rw
-    command: mlflow server --host 0.0.0.0 --port 5001
+      - ./tenants_data:/mlflow/tenants_data
 
-  streamlit:
-    build: ./streamlit
+  # Multi-Tenant Frontend
+  frontend:
+    build: ./frontend
     ports:
       - "8501:8501"
-    volumes:
-      - ./streamlit:/app
-      - ./mlflow_data:/mlflow_data
-    depends_on:
-      - mlflow
-    command: streamlit run app.py --server.address=0.0.0.0
-
-  jupyter:
-    image: jupyter/scipy-notebook:latest
-    ports:
-      - "8888:8888"
-    volumes:
-      - ./notebooks:/home/jovyan/work
-      - ./data:/home/jovyan/data
     environment:
-      - MLFLOW_TRACKING_URI=http://mlflow:5001
+      - GATEWAY_URL=http://gateway:8000
+    depends_on:
+      - gateway
+    volumes:
+      - ./frontend:/app
+
+volumes:
+  postgres_data:

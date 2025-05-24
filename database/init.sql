@@ -1,0 +1,2 @@
+CREATE USER mlflow WITH PASSWORD 'mlflow123';
+GRANT ALL PRIVILEGES ON DATABASE mlflow_multitenant TO mlflow;
