@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import mlflow
 from mlflow.tracking import MlflowClient
@@ -6,9 +6,30 @@ import os
 import hashlib
 from typing import Optional
 import json
+from pydantic import BaseModel
+import pandas as pd
+
+print("=== Starting server with latest code version ===")
 
 app = FastAPI(title="Multi-Tenant MLOps Gateway")
+
+@app.middleware("http")
+async def log_request(request: Request, call_next):
+    print(f"\n=== Incoming Request ===")
+    print(f"Method: {request.method}")
+    print(f"URL: {request.url}")
+    print("Headers:")
+    for name, value in request.headers.items():
+        print(f"  {name}: {value}")
+    print("=====================\n")
+    return await call_next(request)
+
 security = HTTPBearer()
+
+# Pydantic model for tenant creation
+class TenantCreateRequest(BaseModel):
+    tenant_id: str
+    tenant_name: str
 
 # Simple tenant storage (use proper DB in production)
 TENANTS_FILE = "/app/tenants_data/tenants.json"
@@ -87,9 +108,23 @@ def get_mlflow_client(tenant_id: str = Depends(get_tenant_id)):
 
 # Tenant Management Endpoints
 @app.post("/tenants")
-async def create_tenant(tenant_id: str, tenant_name: str):
+async def create_tenant(request: Request):
     """Create a new tenant"""
-    return tenant_manager.create_tenant(tenant_id, tenant_name)
+    try:
+        body = await request.json()
+        print(f"Received request body: {body}")
+        tenant_id = body.get("tenant_id")
+        tenant_name = body.get("tenant_name")
+        
+        if not tenant_id or not tenant_name:
+            raise HTTPException(status_code=400, detail="Missing tenant_id or tenant_name in request body")
+            
+        return tenant_manager.create_tenant(tenant_id, tenant_name)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in request body")
+    except Exception as e:
+        print(f"Error processing request: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/tenants")
 async def list_tenants():
@@ -97,26 +132,32 @@ async def list_tenants():
     return tenant_manager.list_tenants()
 
 @app.get("/tenants/{tenant_id}")
-async def get_tenant(tenant_id: str):
+async def get_tenant(tenant_id: str = Depends(get_tenant_id)):
     """Get tenant details"""
     return tenant_manager.get_tenant(tenant_id)
 
 # Tenant-Scoped MLflow Endpoints
 @app.get("/experiments")
-async def list_experiments(client: MlflowClient = Depends(get_mlflow_client)):
+async def list_experiments(tenant_id: str = Depends(get_tenant_id)):
     """List experiments for tenant"""
+    client = get_mlflow_client(tenant_id)
     experiments = client.search_experiments()
     return [{"id": exp.experiment_id, "name": exp.name} for exp in experiments]
 
 @app.get("/experiments/{experiment_id}/runs")
-async def list_runs(experiment_id: str, client: MlflowClient = Depends(get_mlflow_client)):
+async def list_runs(
+    experiment_id: str,
+    tenant_id: str = Depends(get_tenant_id)
+):
     """List runs for experiment"""
+    client = get_mlflow_client(tenant_id)
     runs = client.search_runs([experiment_id])
     return [{"id": run.info.run_id, "status": run.info.status} for run in runs]
 
 @app.get("/models")
-async def list_models(client: MlflowClient = Depends(get_mlflow_client)):
+async def list_models(tenant_id: str = Depends(get_tenant_id)):
     """List registered models for tenant"""
+    client = get_mlflow_client(tenant_id)
     models = client.search_registered_models()
     return [{"name": model.name, "description": model.description} for model in models]
 

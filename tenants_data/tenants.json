@@ -1,1 +1,1 @@
-{}
+{"google_inc": {"name": "google", "created_at": "2025-05-24 17:56:18.444766", "mlflow_uri": "postgresql://mlflow:mlflow123@postgres:5432/mlflow_multitenant?options=-csearch_path=google_inc", "artifact_root": "/mlflow/tenants_data/google_inc/artifacts"}}

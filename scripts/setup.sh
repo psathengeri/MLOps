@@ -20,29 +20,29 @@ END;
 $$ LANGUAGE plpgsql;
 EOF
 
-# Create Dockerfiles
-cat > gateway/Dockerfile << 'EOF'
-FROM python:3.9-slim
-WORKDIR /app
-RUN pip install fastapi uvicorn mlflow psycopg2-binary pandas
-COPY . .
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-EOF
+# # Create Dockerfiles 
+# cat > gateway/Dockerfile << 'EOF'
+# FROM python:3.9-slim
+# WORKDIR /app
+# RUN pip install fastapi uvicorn mlflow psycopg2-binary pandas
+# COPY . .
+# CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# EOF
 
-cat > frontend/Dockerfile << 'EOF'
-FROM python:3.9-slim
-WORKDIR /app
-RUN pip install streamlit requests pandas plotly
-COPY . .
-CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]
-EOF
+# cat > frontend/Dockerfile << 'EOF'
+# FROM python:3.9-slim
+# WORKDIR /app
+# RUN pip install streamlit requests pandas plotly
+# COPY . .
+# CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]
+# EOF
 
-cat > mlflow/Dockerfile << 'EOF'
-FROM python:3.9-slim
-RUN pip install mlflow psycopg2-binary
-WORKDIR /mlflow
-CMD ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000"]
-EOF
+# cat > mlflow/Dockerfile << 'EOF'
+# FROM python:3.9-slim
+# RUN pip install mlflow psycopg2-binary
+# WORKDIR /mlflow
+# CMD ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000"]
+# EOF 
 
 echo "🐳 Starting services..."
 docker compose up -d

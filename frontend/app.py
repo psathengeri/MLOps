@@ -1,8 +1,16 @@
 import streamlit as st
 import requests
 import json
+import mlflow
+from mlflow.exceptions import MlflowException
 
 st.set_page_config(page_title="Multi-Tenant MLOps", layout="wide")
+
+# Initialize session state variables if they don't exist
+if "tenant_id" not in st.session_state:
+    st.session_state.tenant_id = None
+if "experiment_type" not in st.session_state:
+    st.session_state.experiment_type = None
 
 # Tenant Selection
 st.sidebar.title("🏢 Tenant Selection")
@@ -10,7 +18,7 @@ st.sidebar.title("🏢 Tenant Selection")
 # Load or create tenant list
 if 'tenants' not in st.session_state:
     try:
-        response = requests.get("http://gateway:8000/tenants")
+        response = requests.get("http://gateway:8000/tenants", headers={"X-Tenant-ID": "system"})
         st.session_state.tenants = response.json() if response.status_code == 200 else []
     except:
         st.session_state.tenants = []
@@ -18,6 +26,15 @@ if 'tenants' not in st.session_state:
 # Tenant selector
 tenant_options = ["Create New Tenant"] + st.session_state.tenants
 selected_tenant = st.sidebar.selectbox("Select Tenant", tenant_options)
+
+# Experiment type selector
+experiment_types = ["Default", "AutoML", "Notebook", "BatchPipeline"]
+selected_experiment_type = st.sidebar.selectbox("Select Experiment Type", experiment_types)
+
+# Update session state when selections change
+if selected_tenant != "Create New Tenant":
+    st.session_state.tenant_id = selected_tenant
+    st.session_state.experiment_type = selected_experiment_type
 
 # Create new tenant
 if selected_tenant == "Create New Tenant":
@@ -29,16 +46,41 @@ if selected_tenant == "Create New Tenant":
         if new_tenant_id and new_tenant_name:
             try:
                 response = requests.post(
-                    f"http://gateway:8000/tenants?tenant_id={new_tenant_id}&tenant_name={new_tenant_name}"
+                    "http://gateway:8000/tenants",
+                    headers={"X-Tenant-ID": "system"},
+                    json={
+                        "tenant_id": new_tenant_id,
+                        "tenant_name": new_tenant_name
+                    }
                 )
                 if response.status_code == 200:
                     st.sidebar.success("Tenant created successfully!")
                     st.session_state.tenants.append(new_tenant_id)
                     st.rerun()
                 else:
-                    st.sidebar.error("Failed to create tenant")
+                    error_msg = response.json().get("detail", "Failed to create tenant")
+                    st.sidebar.error(f"Error: {error_msg}")
+            except requests.exceptions.RequestException as e:
+                st.sidebar.error(f"Connection error: {str(e)}")
             except Exception as e:
-                st.sidebar.error(f"Error: {str(e)}")
+                st.sidebar.error(f"Unexpected error: {str(e)}")
+        else:
+            st.sidebar.warning("Please provide both Tenant ID and Tenant Name")
+
+# Display status message if both selections are made
+if st.session_state.tenant_id and st.session_state.experiment_type:
+    st.info(f"You are working in tenant: `{st.session_state.tenant_id}` | Experiment: `{st.session_state.experiment_type}`")
+    
+    # Configure MLflow
+    try:
+        tracking_uri = f"http://mlflow:5000/{st.session_state.tenant_id}"
+        mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(st.session_state.experiment_type)
+        st.sidebar.success("MLflow tracking configured successfully!")
+    except MlflowException as e:
+        st.error(f"Failed to configure MLflow: {str(e)}")
+    except Exception as e:
+        st.error(f"Unexpected error configuring MLflow: {str(e)}")
 
 # Main interface (if tenant selected)
 if selected_tenant != "Create New Tenant":
