@@ -49,6 +49,7 @@ services:
       - gateway
     volumes:
       - ./frontend:/app
+      - ./tenants_data:/app/tenants_data
 
 volumes:
   postgres_data:
